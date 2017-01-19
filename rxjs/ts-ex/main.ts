@@ -1,17 +1,49 @@
 import { Observable } from 'rxjs'
 
-const circle = document.getElementById('circle')
-let source = Observable.fromEvent(document, "mousemove")
-.map((e: MouseEvent) => ({ x: e.clientX, y: e.clientY }))
-.filter(v => v.x < 500)
-.delay(400)
+const output = document.getElementById('output')
+const button = document.getElementById('button')
 
-function onNext(value) {
-    circle.style.left = value.x
-    circle.style.top = value.y
+let click = Observable.fromEvent(button, "click")
+
+function load(url: string) {
+    return Observable.create(observer => {
+        const xhr = new XMLHttpRequest()
+        xhr.addEventListener("load", () => {
+            if (xhr.status === 200) {
+                const data = JSON.parse(xhr.responseText)
+                observer.next(data)
+                observer.complete()
+            } else {
+                observer.error(xhr.statusText)
+            }
+        })
+        xhr.open('GET', url)
+        xhr.send()
+    }).retryWhen(retryStrategy({ tries: 4, delay: 1500 }))
 }
-source.subscribe(
-    onNext,
-    (e) => console.log(`error ${e}`),
-    () => console.log('complete')
-)
+
+function retryStrategy({ tries = 3, delay = 1000}) {
+    return (errors) => {
+        return errors
+                .scan((acc, val) => {
+                    console.log(acc, val)
+                    return acc + 1
+                }, 0)
+                .takeWhile(acc => acc < tries)
+                .delay(delay)
+    }
+}
+function renderMovies(movies) {
+    movies.forEach(m => {
+        const div = document.createElement('div')
+        div.innerText = m.title
+        output.appendChild(div)
+    })
+}
+
+click.flatMap(e => load('movies.json'))
+    .subscribe(
+        renderMovies,
+        (e) => console.log(`error ${e}`),
+        () => console.log('complete')
+    )
